@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project implements a complete Retrieval-Augmented Generation (RAG) pipeline using local resources, including the Llama 3.1 8B language model. The system processes PDF documents we used[this pdf](https://pressbooks.oer.hawaii.edu/humannutrition2/open/download?type=pdf), performs semantic search, and generates context-aware responses to user queries about nutrition.
+This project implements a complete Retrieval-Augmented Generation (RAG) pipeline using local resources, including the Llama 3.1 8B language model. The system processes PDF documents we used [this pdf](https://pressbooks.oer.hawaii.edu/humannutrition2/open/download?type=pdf), performs semantic search, and generates context-aware responses to user queries about nutrition.
 
 ## Key Features
 
