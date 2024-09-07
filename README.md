@@ -1,15 +1,15 @@
-# Local RAG Pipeline with Llama 3
+# RAG Pipeline from Scratch with Llama 3.1 8B
 
 ## Project Overview
 
-This project implements a complete Retrieval-Augmented Generation (RAG) pipeline using local resources, including the Llama 3 language model. The system processes PDF documents, performs semantic search, and generates context-aware responses to user queries.
+This project implements a complete Retrieval-Augmented Generation (RAG) pipeline using local resources, including the Llama 3.1 8B language model. The system processes PDF documents, performs semantic search, and generates context-aware responses to user queries about nutrition.
 
 ## Key Features
 
 - PDF text extraction and preprocessing
 - Text embedding generation using SentenceTransformers
 - Semantic search functionality
-- Local deployment of Llama 3 language model
+- Local deployment of Llama 3.1 8B language model
 - Context-augmented prompt engineering
 - Efficient query processing and response generation
 
@@ -22,11 +22,19 @@ This project implements a complete Retrieval-Augmented Generation (RAG) pipeline
 - PyMuPDF (fitz)
 - NVIDIA CUDA (for GPU acceleration)
 
+## Prerequisites
+
+- NVIDIA GPU with at least 8GB VRAM
+- CUDA toolkit installed
+- Python 3.8+
+- Hugging Face account with access to Llama 3.1 8B model
+
 ## Installation
 
 1. Clone this repository:
    ```
-   git clone https://github.com/yourusername/local-rag-pipeline.git
+   git clone https://github.com/geijinchan/RAG-from-Scratch-LLama-3.1-8B-.git
+   cd RAG-from-Scratch-LLama-3.1-8B-
    ```
 
 2. Install the required packages:
@@ -34,26 +42,25 @@ This project implements a complete Retrieval-Augmented Generation (RAG) pipeline
    pip install -r requirements.txt
    ```
 
-3. Download the Llama 3 model weights (requires Hugging Face access token).
+3. Download the Llama 3.1 8B model weights (requires Hugging Face access token).
 
 ## Usage
 
-1. Place your PDF document in the project directory.
-2. Run the preprocessing script to extract and embed text:
-   ```
-   python preprocess.py
-   ```
-3. Start the RAG pipeline:
-   ```
-   python rag_pipeline.py
-   ```
-4. Enter your queries and receive context-aware responses.
+1. Place your PDF document (e.g., nutrition textbook) in the project directory.
+2. Run the Jupyter notebook to process the PDF, create embeddings, and set up the RAG pipeline.
+3. Use the provided functions to ask questions about nutrition and receive context-aware responses.
+
+## Example Queries
+
+- "What are the macronutrients, and what roles do they play in the human body?"
+- "How do vitamins and minerals differ in their roles and importance for health?"
+- "Describe the process of digestion and absorption of nutrients in the human body."
 
 ## Performance
 
-- Processes a 1200-page textbook in under [X] minutes
-- Generates responses in [Y] seconds on average
-- Supports [Z] concurrent users on a single GPU
+- Processes a 1200-page nutrition textbook
+- Generates responses using a locally deployed 8B parameter language model
+- Supports semantic search and context-aware answer generation
 
 ## Future Improvements
 
@@ -69,4 +76,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Hugging Face for providing access to the Llama 3.1 8B model
+- The authors of the nutrition textbook used in this project
