@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project implements a complete Retrieval-Augmented Generation (RAG) pipeline using local resources, including the Llama 3.1 8B language model. The system processes PDF documents, performs semantic search, and generates context-aware responses to user queries about nutrition.
+This project implements a complete Retrieval-Augmented Generation (RAG) pipeline using local resources, including the Llama 3.1 8B language model. The system processes PDF documents we used[this pdf](https://pressbooks.oer.hawaii.edu/humannutrition2/open/download?type=pdf), performs semantic search, and generates context-aware responses to user queries about nutrition.
 
 ## Key Features
 
@@ -25,9 +25,9 @@ This project implements a complete Retrieval-Augmented Generation (RAG) pipeline
 ## Prerequisites
 
 - NVIDIA GPU with at least 8GB VRAM
-- CUDA toolkit installed
+- [CUDA toolkit installed](https://developer.nvidia.com/cuda-toolkit-archive)
 - Python 3.8+
-- Hugging Face account with access to Llama 3.1 8B model
+- [Hugging Face account with access to Llama 3.1 8B model](https://huggingface.co/meta-llama/Meta-Llama-3.1-8B-Instruct)
 
 ## Installation
 
