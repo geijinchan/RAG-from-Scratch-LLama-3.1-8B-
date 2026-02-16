@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  rag-app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: rag-assistant
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-mpnet-base-v2}
+      - LLM_MODEL_ID=${LLM_MODEL_ID:-meta-llama/Meta-Llama-3.1-8B-Instruct}
+      - DEVICE=${DEVICE:-cuda}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
+      - LLM_MAX_NEW_TOKENS=${LLM_MAX_NEW_TOKENS:-512}
+      - RETRIEVAL_TOP_K=${RETRIEVAL_TOP_K:-5}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    stdin_open: true
+    tty: true
+    # GPU support (uncomment if using NVIDIA GPU)
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  data:
+  logs:
