@@ -1,0 +1,629 @@
+================================================================================
+     RAG SYSTEM - VISUAL EXECUTION FLOW DIAGRAMS
+================================================================================
+
+═══════════════════════════════════════════════════════════════════════════════
+DIAGRAM 1: USER UPLOADS PDF - COMPLETE FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STREAMLIT APP - User Interaction                                            │
+│                                                                              │
+│  [📄 Click "Upload PDF"] → file_uploader()                                 │
+│                                                                              │
+│                            ↓                                                 │
+│                                                                              │
+│                 [Initialize Pipeline] (FIRST TIME ONLY)                     │
+│                 └─ RAGPipeline.__init__()                                  │
+│                    ├─ PDFProcessor() <100ms                                │
+│                    ├─ EmbeddingManager() <2 minutes (download model)       │
+│                    └─ LLMHandler() <15 minutes (download 16GB model)       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 1: EXTRACT TEXT FROM PDF (30-60 seconds)                              │
+│                                                                              │
+│  RAGPipeline.pipeline()                                                     │
+│  └─ PDFProcessor.process_pdf()                                             │
+│     └─ extract_text_from_pdf(pdf_path)                                     │
+│        ├─ fitz.open(pdf_path)                                              │
+│        └─ for each page:                                                    │
+│           └─ page.get_text()                                               │
+│              └─ text_formatter(text) [clean whitespace]                    │
+│                                                                              │
+│  OUTPUT: pages_and_texts = [                                               │
+│    {"page_number": 0, "text": "Introduction..."},                          │
+│    {"page_number": 1, "text": "Chapter 1..."},                             │
+│    ...                                                                       │
+│  ]                                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 2: SPLIT INTO SENTENCES (20-30 seconds)                               │
+│                                                                              │
+│  PDFProcessor.split_into_sentences(pages_and_texts)                        │
+│  └─ for each page:                                                          │
+│     ├─ nlp(text)  [spaCy English sentencizer]                              │
+│     └─ for each sentence in doc.sents:                                     │
+│        └─ Extract sentence text                                             │
+│                                                                              │
+│  OUTPUT: pages_and_texts = [                                               │
+│    {                                                                         │
+│      "page_number": 0,                                                      │
+│      "sentences": [                                                          │
+│        "Introduction to machine learning.",                                  │
+│        "This is an important topic.",                                        │
+│        ...                                                                   │
+│      ]                                                                       │
+│    },                                                                        │
+│    ...                                                                       │
+│  ]                                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 3: GROUP SENTENCES INTO CHUNKS (5-10 seconds)                         │
+│                                                                              │
+│  PDFProcessor.chunk_sentences(pages_and_texts)                             │
+│  └─ for each page:                                                          │
+│     └─ _split_list(sentences, chunk_size=10)                              │
+│        └─ Group every 10 sentences together                                │
+│                                                                              │
+│  OUTPUT: pages_and_texts = [                                               │
+│    {                                                                         │
+│      "page_number": 0,                                                      │
+│      "sentence_chunks": [                                                    │
+│        ["Sent1", "Sent2", "Sent3", ..., "Sent10"],                         │
+│        ["Sent11", "Sent12", ..., "Sent20"],                                │
+│        ...                                                                   │
+│      ]                                                                       │
+│    },                                                                        │
+│    ...                                                                       │
+│  ]                                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 4: CREATE CHUNK METADATA (5-10 seconds)                               │
+│                                                                              │
+│  PDFProcessor.create_chunks(pages_and_texts)                               │
+│  └─ for each page → chunk group:                                           │
+│     ├─ Join sentences with spaces                                           │
+│     ├─ Calculate token count using tiktoken                                │
+│     └─ Create chunk dictionary                                              │
+│                                                                              │
+│  OUTPUT: chunks = [                                                         │
+│    {                                                                         │
+│      "page_number": 0,                                                      │
+│      "sentence_chunk": "Sent1 Sent2 ... Sent10",                           │
+│      "chunk_token_count": 87,                                               │
+│      "chunk_char_count": 421,                                               │
+│      "chunk_word_count": 73                                                 │
+│    },                                                                        │
+│    {                                                                         │
+│      "page_number": 0,                                                      │
+│      "sentence_chunk": "Sent11 Sent12 ... Sent20",                         │
+│      "chunk_token_count": 92,                                               │
+│      "chunk_char_count": 438,                                               │
+│      "chunk_word_count": 76                                                 │
+│    },                                                                        │
+│    ...                                                                       │
+│  ]                                                                           │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 5: FILTER OUT VERY SHORT CHUNKS (<1 second)                           │
+│                                                                              │
+│  PDFProcessor.filter_chunks(pages_and_chunks)                              │
+│  └─ Filter: keep only chunks with token_count >= MIN_CHUNK_TOKENS (30)    │
+│                                                                              │
+│  OUTPUT: 234 chunks after filtering (from 240 total)                      │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 6: GENERATE EMBEDDINGS (1-3 minutes)                                   │
+│                                                                              │
+│  RAGPipeline.embed_chunks(chunks)                                          │
+│  └─ EmbeddingManager.embed_chunks(chunks)                                  │
+│     ├─ Extract text from all chunks                                         │
+│     ├─ batch_size = 32                                                      │
+│     └─ SentenceTransformer.encode(texts, batch_size=32, convert_to_tensor) │
+│        ├─ Process batch 1: chunks 0-31     ~1-2 sec                       │
+│        ├─ Process batch 2: chunks 32-63    ~1-2 sec                       │
+│        ├─ Process batch 3: chunks 64-95    ~1-2 sec                       │
+│        ├─ Process batch 4: chunks 96-127   ~1-2 sec                       │
+│        ├─ Process batch 5: chunks 128-159  ~1-2 sec                       │
+│        ├─ Process batch 6: chunks 160-191  ~1-2 sec                       │
+│        ├─ Process batch 7: chunks 192-223  ~1-2 sec                       │
+│        └─ Process batch 8: chunks 224-234  ~1-2 sec                       │
+│                                                                              │
+│  OUTPUT: chunks with embeddings = [                                        │
+│    {                                                                         │
+│      "page_number": 0,                                                      │
+│      "sentence_chunk": "Sent1 Sent2 ... Sent10",                           │
+│      "chunk_token_count": 87,                                               │
+│      "embedding": [                                                          │
+│        0.123, -0.456, 0.789, ..., 0.234  # 768 dimensions                 │
+│      ]                                                                       │
+│    },                                                                        │
+│    ...                                                                       │
+│  ]                                                                           │
+│                                                                              │
+│  NOTE: All embeddings pre-computed and ready for retrieval!               │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STEP 7: SETUP RETRIEVER (<1 second)                                         │
+│                                                                              │
+│  RAGPipeline.setup_retriever(chunks)                                       │
+│  └─ SemanticRetriever.__init__()                                            │
+│     └─ _prepare_embeddings()                                               │
+│        └─ Convert embeddings from numpy to torch tensors                    │
+│           (For faster GPU computation)                                       │
+│                                                                              │
+│  OUTPUT: Retriever ready to search!                                         │
+│          ├─ chunks: List[Dict] with embeddings                             │
+│          ├─ chunk_embeddings: torch.Tensor(234, 768)                       │
+│          ├─ embedding_manager: reference to EmbeddingManager               │
+│          └─ config: RetrieverConfig()                                       │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+                    ✅ PDF FULLY PROCESSED AND READY!
+                    
+                    Session state updated:
+                    {
+                        "pdf_loaded": True,
+                        "pipeline": RAGPipeline instance,
+                        "num_chunks": 234,
+                        "embeddings_generated": True
+                    }
+
+
+═══════════════════════════════════════════════════════════════════════════════
+DIAGRAM 2: USER ASKS A QUESTION - COMPLETE FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ STREAMLIT APP - Chat Interface                                              │
+│                                                                              │
+│  [💬 Type question] → "What are macronutrients?"                           │
+│  [🔍 Click Ask]                                                             │
+│                                                                              │
+│  User Query: "What are macronutrients?"                                     │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 1: RETRIEVE RELEVANT CONTEXT (50-200ms)                              │
+│                                                                              │
+│  RAGPipeline.ask(                                                           │
+│      query="What are macronutrients?",                                     │
+│      top_k=5,                                                               │
+│      temperature=0.7,                                                       │
+│      return_context=True                                                    │
+│  )                                                                           │
+│  │                                                                           │
+│  └─ RAGPipeline.retrieve(query, top_k=5)                                   │
+│     │                                                                        │
+│     └─ SemanticRetriever.retrieve_with_metadata(query)                     │
+│        │                                                                     │
+│        ├─ STEP 1: Embed the user's query                                   │
+│        │  └─ embedding_manager.generate_embeddings("What are macronutrients?") │
+│        │     └─ SentenceTransformer.encode(query)                          │
+│        │        OUTPUT: query_embedding = [0.234, -0.567, ..., 0.891]     │
+│        │                (768-dimensional vector)                            │
+│        │                                                                     │
+│        ├─ STEP 2: Compute similarity with all chunks                        │
+│        │  └─ torch.nn.functional.dot_score(query_emb, chunk_embeddings)   │
+│        │     Computation:                                                    │
+│        │     - Chunk 0: 0.234×emb[0] + -0.567×emb[1] + ... = 0.84 ✓       │
+│        │     - Chunk 1: 0.234×emb[0] + -0.567×emb[1] + ... = 0.91 ✓✓      │
+│        │     - Chunk 2: 0.234×emb[0] + -0.567×emb[1] + ... = 0.23         │
+│        │     - Chunk 3: 0.234×emb[0] + -0.567×emb[1] + ... = 0.77 ✓       │
+│        │     - Chunk 4: 0.234×emb[0] + -0.567×emb[1] + ... = 0.61         │
+│        │     ...                                                             │
+│        │     - Chunk 233: ... = 0.19                                        │
+│        │                                                                     │
+│        │     OUTPUT: similarity_scores = [                                  │
+│        │       {"chunk": chunk_1, "score": 0.91},                          │
+│        │       {"chunk": chunk_3, "score": 0.84},                          │
+│        │       {"chunk": chunk_0, "score": 0.77},                          │
+│        │       ...                                                           │
+│        │     ]                                                               │
+│        │                                                                     │
+│        └─ STEP 3: Return top-5 most similar chunks                        │
+│           └─ torch.topk(scores, k=5)                                       │
+│              OUTPUT: [chunk_1, chunk_3, chunk_0, chunk_5, chunk_7]        │
+│                      (sorted by similarity score descending)                │
+│                                                                              │
+│  RETRIEVED CONTEXT:                                                         │
+│  ┌─────────────────────────────────────────────────────┐                   │
+│  │ [1] Similarity: 0.91                                │                   │
+│  │ Page 12: "Macronutrients are organic compounds..."  │                   │
+│  │                                                      │                   │
+│  │ [2] Similarity: 0.84                                │                   │
+│  │ Page 15: "There are three main macronutrients..."   │                   │
+│  │                                                      │                   │
+│  │ [3] Similarity: 0.77                                │                   │
+│  │ Page 18: "Proteins are essential macronutrients..." │                   │
+│  │                                                      │                   │
+│  │ [4] Similarity: 0.73                                │                   │
+│  │ Page 22: "Fats serve important functions..."        │                   │
+│  │                                                      │                   │
+│  │ [5] Similarity: 0.71                                │                   │
+│  │ Page 25: "Carbohydrates provide energy..."          │                   │
+│  └─────────────────────────────────────────────────────┘                   │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 2: FORMAT PROMPT WITH RETRIEVAL CONTEXT (<100ms)                     │
+│                                                                              │
+│  RAGPipeline.generate(query, context_chunks)                               │
+│  └─ LLMHandler.format_prompt_with_context(query, context_chunks)           │
+│     │                                                                        │
+│     ├─ STEP 1: Create context block                                        │
+│     │  └─ Extract text and page numbers from retrieved chunks              │
+│     │     "Context:\n                                                       │
+│     │      - Page 12: Macronutrients are organic compounds...              │
+│     │      - Page 15: There are three main macronutrients...               │
+│     │      - Page 18: Proteins are essential macronutrients...             │
+│     │      - Page 22: Fats serve important functions...                    │
+│     │      - Page 25: Carbohydrates provide energy..."                    │
+│     │                                                                        │
+│     ├─ STEP 2: Create dialogue template                                    │
+│     │  └─ Format with chat template                                         │
+│     │     [{"role": "user", "content": "Given the context...               │
+│     │                                                          │
+│     │      Context:                                            │
+│     │      - Page 12: Macronutrients are organic...            │
+│     │      - ...                                               │
+│     │                                                          │
+│     │      Answer the question: What are macronutrients?"}]   │
+│     │                                                          │
+│     └─ STEP 3: Apply tokenizer chat template                  │
+│        └─ tokenizer.apply_chat_template()                     │
+│           └─ Adds special tokens for Llama model              │
+│                                                                │
+│  FINAL FORMATTED PROMPT (ready for LLM):                     │
+│  ┌─────────────────────────────────────────────────────────┐ │
+│  │ <|begin_of_text|><|start_header_id|>user<|end_header_│ │
+│  │ id|>                                                     │ │
+│  │                                                          │ │
+│  │ You are a helpful AI assistant that answers questions   │ │
+│  │ about documents. Use ONLY the provided context...       │ │
+│  │                                                          │ │
+│  │ Context:                                                │ │
+│  │ - Page 12: Macronutrients are organic compounds...      │ │
+│  │ - Page 15: There are three main macronutrients...       │ │
+│  │ - Page 18: Proteins are essential macronutrients...     │ │
+│  │ - Page 22: Fats serve important functions...            │ │
+│  │ - Page 25: Carbohydrates provide energy...              │ │
+│  │                                                          │ │
+│  │ Question: What are macronutrients?                      │ │
+│  │                                                          │ │
+│  │ Answer:<|eot_id|><|start_header_id|>assistant<|end_    │ │
+│  │ header_id|>                                             │ │
+│  └─────────────────────────────────────────────────────────┘ │
+│  (Token count: ~512 tokens, after this comes generated tokens)│
+│                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 3: GENERATE ANSWER WITH LLM (5-30 seconds)                            │
+│                                                                              │
+│  LLMHandler.generate(prompt, temperature=0.7, max_tokens=512)               │
+│  │                                                                           │
+│  ├─ STEP 1: Tokenize prompt                                                 │
+│  │  └─ tokenizer(formatted_prompt, return_tensors="pt")                    │
+│  │     └─ input_ids = [1, 882, 4678, 2991, ..., 3890]  # token IDs        │
+│  │                                                                           │
+│  ├─ STEP 2: Disable gradient computation                                    │
+│  │  └─ with torch.no_grad():                                               │
+│  │     (Saves memory, only do forward pass)                                 │
+│  │                                                                           │
+│  ├─ STEP 3: Generate tokens one-by-one                                      │
+│  │  └─ model.generate(                                                      │
+│  │      input_ids,                                                          │
+│  │      max_new_tokens=512,                                                 │
+│  │      temperature=0.7,  # Adjust randomness                              │
+│  │      do_sample=True    # Use sampling, not greedy                       │
+│  │     )                                                                     │
+│  │                                                                           │
+│  │     Generation loop (simplified):                                        │
+│  │     ┌──────────────────────────────────────────┐                        │
+│  │     │ Iteration 1:                             │                        │
+│  │     │ - LLM processes: [1, 882, 4678, ...]     │                        │
+│  │     │ - Outputs logits for next token          │                        │
+│  │     │ - Apply temperature: divide by 0.7       │                        │
+│  │     │ - Sample next token: "Macronutrients"    │                        │
+│  │     │ - Append to output                       │                        │
+│  │     │ Output: [1, 882, 4678, ..., TOKEN_123]   │                        │
+│  │     │                                          │                        │
+│  │     │ Iteration 2:                             │                        │
+│  │     │ - LLM processes: [1, 882, 4678, ....123] │ ← Longer context      │
+│  │     │ - Outputs logits for next token          │                        │
+│  │     │ - Sample next token: "are"               │                        │
+│  │     │ - Append to output                       │                        │
+│  │     │ Output: [1, 882, 4678, ..., 123, 456]    │                        │
+│  │     │                                          │                        │
+│  │     │ Iteration 3: "organic"                   │                        │
+│  │     │ Iteration 4: "compounds"                 │                        │
+│  │     │ Iteration 5: "that"                      │                        │
+│  │     │ ...                                      │                        │
+│  │     │ Iteration 87: [END_OF_SEQUENCE]          │                        │
+│  │     │ (Stop when max_tokens or EOS reached)    │                        │
+│  │     └──────────────────────────────────────────┘                        │
+│  │                                                                           │
+│  ├─ STEP 4: Decode tokens back to text                                      │
+│  │  └─ tokenizer.decode(output_ids, skip_special_tokens=True)              │
+│  │     └─ "Macronutrients are organic compounds..."                        │
+│  │                                                                           │
+│  └─ STEP 5: Clean output                                                    │
+│     ├─ Remove prompt prefix if included                                     │
+│     └─ Clean whitespace and special characters                              │
+│                                                                              │
+│  GENERATED ANSWER (Final Output):                                          │
+│  ┌─────────────────────────────────────────────────────────┐               │
+│  │ Macronutrients are organic compounds that provide       │               │
+│  │ energy and structural components to the body. They are  │               │
+│  │ essential nutrients needed in large amounts compared    │               │
+│  │ to micronutrients.                                      │               │
+│  │                                                          │               │
+│  │ There are three main types of macronutrients:          │               │
+│  │                                                          │               │
+│  │ 1. Proteins: Essential macronutrients that serve        │               │
+│  │    various functions in the body including building     │               │
+│  │    muscle, enzymes, and hormones.                       │               │
+│  │                                                          │               │
+│  │ 2. Fats: Important macronutrients that serve energy     │               │
+│  │    storage and cellular functions.                      │               │
+│  │                                                          │               │
+│  │ 3. Carbohydrates: Provide energy and include glucose,   │               │
+│  │    which is essential for brain function.               │               │
+│  │                                                          │               │
+│  │ These three macronutrient categories are vital for      │               │
+│  │ proper nutrition and health.                            │               │
+│  └─────────────────────────────────────────────────────────┘               │
+│                                                                              │
+│  Generation Stats:                                                           │
+│  ├─ Prompt tokens: 512                                                      │
+│  ├─ Generated tokens: 167                                                   │
+│  ├─ Total tokens: 679                                                       │
+│  └─ Time: 12.3 seconds                                                      │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ PHASE 4: DISPLAY RESULTS IN STREAMLIT UI                                   │
+│                                                                              │
+│  ┌─ Chat History ───────────────────────────────────────────┐              │
+│  │                                                            │              │
+│  │ 👤 You (12:34 PM):                                        │              │
+│  │ "What are macronutrients?"                                │              │
+│  │                                                            │              │
+│  │ 🤖 Assistant (12:34:12 PM):                               │              │
+│  │ "Macronutrients are organic compounds that provide        │              │
+│  │  energy and structural components to the body. They are   │              │
+│  │  essential nutrients needed in large amounts compared     │              │
+│  │  to micronutrients.                                       │              │
+│  │                                                            │              │
+│  │  There are three main types of macronutrients:            │              │
+│  │  1. Proteins: ...                                         │              │
+│  │  2. Fats: ...                                             │              │
+│  │  3. Carbohydrates: ..."                                   │              │
+│  │                                                            │              │
+│  │  [📚 Show Retrieved Context]  ← Expandable                │              │
+│  │                                                            │              │
+│  └────────────────────────────────────────────────────────────┘              │
+│                                                                              │
+│  When user clicks "Show Retrieved Context":                                 │
+│  ┌─ Context ────────────────────────────────────────────────┐              │
+│  │                                                            │              │
+│  │ [1] Similarity Score: 0.91 | Page: 12                     │              │
+│  │ "Macronutrients are organic compounds that provide        │              │
+│  │  energy and structural components. They are classified    │              │
+│  │  as carbohydrates, proteins, and fats."                   │              │
+│  │                                                            │              │
+│  │ [2] Similarity Score: 0.84 | Page: 15                     │              │
+│  │ "There are three main macronutrients that the body        │              │
+│  │  requires in significant quantities to function..."       │              │
+│  │                                                            │              │
+│  │ [3] Similarity Score: 0.77 | Page: 18                     │              │
+│  │ "Proteins are essential macronutrients composed of amino   │              │
+│  │  acids that serve multiple functions in the body..."      │              │
+│  │                                                            │              │
+│  │ [4] Similarity Score: 0.73 | Page: 22                     │              │
+│  │ "Fats, or lipids, serve important functions including      │              │
+│  │  energy storage and cellular component formation..."      │              │
+│  │                                                            │              │
+│  │ [5] Similarity Score: 0.71 | Page: 25                     │              │
+│  │ "Carbohydrates provide a rapid source of energy for the    │              │
+│  │  body and are essential for brain function..."            │              │
+│  │                                                            │              │
+│  └────────────────────────────────────────────────────────────┘              │
+│                                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+TOTAL TIME FOR QUERY:
+├─ Retrieval:     100ms
+├─ Formatting:    50ms  
+├─ Generation:    12.3 seconds
+└─ Rendering:     500ms
+    = 12.95 seconds ✓ (Appears instant to user with streaming)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+DIAGRAM 3: COMPONENT INTERACTION MAP
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          STREAMLIT APP                                      │
+│                    (User Interface Layer)                                    │
+│                                                                             │
+│  ┌──────────────────────────────────────────────────────────────────────┐  │
+│  │ Session State Management                                            │  │
+│  │ - pipeline: RAGPipeline (initialized once per session)              │  │
+│  │ - pdf_loaded: bool                                                 │  │
+│  │ - chat_history: List[Dict]                                         │  │
+│  │ - settings: {"temperature": 0.7, "top_k": 5, "max_tokens": 512}   │  │
+│  └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                             │
+│  Uploads: PDF Files → Stored in data/documents/                            │
+│  Queries: User questions → Passed to RAGPipeline.ask()                    │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    │
+                    │ RAGPipeline(embedding_model, llm_model)
+                    ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        RAG PIPELINE                                         │
+│                 (Orchestration & Coordination Layer)                        │
+│                                                                             │
+│  process_pdf() ────→ │─→ PDFProcessor.process_pdf()                       │
+│                      │   Output: chunks list                               │
+│                      │                                                     │
+│  embed_chunks() ────→ │─→ EmbeddingManager.embed_chunks()                 │
+│                      │   Output: chunks with embeddings                    │
+│                      │                                                     │
+│  setup_retriever() ─→ │─→ SemanticRetriever.__init__()                    │
+│                      │   Output: retriever ready to search                 │
+│                      │                                                     │
+│  retrieve() ────────→ │─→ SemanticRetriever.retrieve_with_metadata()      │
+│                      │   Output: top-k similar chunks                      │
+│                      │                                                     │
+│  generate() ────────→ │─→ LLMHandler.format_prompt_with_context()         │
+│                      │ ─→ LLMHandler.generate()                          │
+│                      │   Output: generated answer                          │
+│                      │                                                     │
+│  ask() [combines all] ────→ retrieve() + generate() + return formatted     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    │
+        ┌───────────┼───────────┬──────────────┐
+        ↓           ↓           ↓              ↓
+    ┌────────┐ ┌──────────────┐ ┌───────────┐ ┌────────────────┐
+    │ PDF    │ │  Embedding   │ │ Semantic  │ │  LLM Handler   │
+    │Proces- │ │   Manager    │ │ Retriever │ │  (Inference)   │
+    │sor     │ │              │ │           │ │                │
+    └────────┘ └──────────────┘ └───────────┘ └────────────────┘
+        │           │               │              │
+        │           │               │              │
+    ┌─────────────────────────────────────────────────────────┐
+    │   DEPENDENCIES                                          │
+    │   ├─ PyMuPDF (fitz)  - PDF extraction                   │
+    │   ├─ spaCy          - Sentence tokenization            │
+    │   ├─ SentenceTransformer - Embedding generation        │
+    │   ├─ PyTorch        - Tensor operations                │
+    │   ├─ Transformers   - LLM loading & inference          │
+    │   ├─ bitsandbytes   - 4-bit/8-bit quantization        │
+    │   └─ NumPy          - Array operations                 │
+    └─────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+DIAGRAM 4: DATA FLOW - TRANSFORMATIONS AT EACH STAGE
+═══════════════════════════════════════════════════════════════════════════════
+
+├─ STAGE 0: INPUT
+│  └─ Raw PDF file (50-100 MB)
+│
+├─ STAGE 1: PDF EXTRACTION
+│  Input:  Raw PDF file
+│  Process: extract_text_from_pdf()
+│  Output: List[{"page_number": int, "text": str}]
+│  Example: [{"page_number": 0, "text": "Chapter 1: Introduction..."}]
+│
+├─ STAGE 2: SENTENCE SPLITTING
+│  Input:  List[{"page_number", "text"}]
+│  Process: split_into_sentences() [spaCy NLP]
+│  Output: List[{"page_number", "sentences": []}]
+│  Example: [{"page_number": 0, "sentences": ["Intro.", "This is..."]}]
+│
+├─ STAGE 3: SENTENCE CHUNKING
+│  Input:  List[{"page_number", "sentences"}]
+│  Process: chunk_sentences() [group by N sentences]
+│  Output: List[{"page_number", "sentence_chunks": [[]]}]
+│  Example: [{"page_number": 0, "sentence_chunks": [["Intro.", "This is..."], ...]}]
+│
+├─ STAGE 4: CHUNK CREATION
+│  Input:  List[{"page_number", "sentence_chunks"}]
+│  Process: create_chunks() [join, count tokens]
+│  Output: List[{"page_number", "sentence_chunk", "token_count", "char_count"}]
+│  Example: [{"page_number": 0, "sentence_chunk": "Intro. This is...", "token_count": 45}]
+│
+├─ STAGE 5: CHUNK FILTERING
+│  Input:  List[{"page_number", "sentence_chunk", "token_count", ...}]
+│  Process: filter_chunks() [remove short chunks]
+│  Output: List[{"page_number", "sentence_chunk", "token_count", ...}]
+│  Example: 234 chunks remain (from 240 original)
+│
+├─ STAGE 6: EMBEDDING GENERATION
+│  Input:  List[{"page_number", "sentence_chunk", ...}]
+│  Process: embed_chunks() [SentenceTransformer.encode()]
+│  Output: List[{"page_number", "sentence_chunk", ..., "embedding": <1x768>}]
+│  Example: {..., "embedding": [0.123, -0.456, ..., 0.234]}
+│
+├─ STAGE 7: RETRIEVER SETUP
+│  Input:  List with embeddings
+│  Process: SemanticRetriever.__init__() [convert to torch tensors]
+│  Output: Retriever instance with torch embeddings tensor <234x768>
+│
+├─ STAGE 8A: QUERY EMBEDDING (for retrieval)
+│  Input:  Query string: "What are macronutrients?"
+│  Process: SentenceTransformer.encode(query)
+│  Output: Query embedding <1x768>
+│
+├─ STAGE 8B: SIMILARITY SEARCH
+│  Input:  Query embedding + Chunk embeddings
+│  Process: torch.nn.functional.dot_score()
+│  Output: Similarity scores <234,> (one score per chunk)
+│
+├─ STAGE 9: TOP-K RETRIEVAL
+│  Input:  Similarity scores
+│  Process: torch.topk(scores, k=5)
+│  Output: Top 5 chunks with highest scores and their texts
+│  Example: [
+│    {"page": 12, "text": "Macronutrients...", "score": 0.91},
+│    {"page": 15, "text": "There are three...", "score": 0.84},
+│    ...
+│  ]
+│
+├─ STAGE 10: PROMPT FORMATTING
+│  Input:  Query + Top-k context chunks
+│  Process: format_prompt_with_context() [combine with template]
+│  Output: Formatted prompt string (~512 tokens)
+│  Example: "<|begin_of_text|>...[context]...[query]Answer:"
+│
+├─ STAGE 11: TOKENIZATION
+│  Input:  Formatted prompt string
+│  Process: tokenizer(prompt) [convert to token IDs]
+│  Output: Token ID array and attention mask
+│  Example: [1, 882, 4678, 2991, ..., 3890]
+│
+├─ STAGE 12: GENERATION
+│  Input:  Token IDs
+│  Process: model.generate() [iterative token prediction]
+│  Output: Extended token ID array with generated tokens
+│  Example: [1, 882, ..., 3890, [new_token], [new_token], ...]
+│
+├─ STAGE 13: DECODING
+│  Input:  Generated token IDs
+│  Process: tokenizer.decode() [convert tokens back to text]
+│  Output: Clean generated text string
+│  Example: "Macronutrients are organic compounds..."
+│
+└─ STAGE 14: OUTPUT
+   Final Answer: "Macronutrients are organic compounds..."
+   + Context: [top 5 chunks with scores]
+   + Visual display in Streamlit
+
+═══════════════════════════════════════════════════════════════════════════════
+END OF DIAGRAMS
+═══════════════════════════════════════════════════════════════════════════════

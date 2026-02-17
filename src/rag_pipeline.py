@@ -48,7 +48,7 @@ class RAGPipeline:
         logger.info("Initializing RAG Pipeline")
         
         self.device = device
-        self.pdf_processor = PDFProcessor()
+        self.pdf_processor = PDFProcessor() # Initialize PDF processor
         self.embedding_manager = EmbeddingManager(
             model_name=embedding_model,
             device=device
