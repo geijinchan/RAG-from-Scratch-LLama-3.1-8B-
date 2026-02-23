@@ -12,7 +12,7 @@ from src.retrieval import SemanticRetriever, RetrieverConfig
 from src.llm_handler import LLMHandler
 from config.settings import (
     EMBEDDING_MODEL,
-    LLM_MODEL_ID,
+    GROQ_MODEL,
     DEVICE,
     RETRIEVAL_TOP_K,
     EMBEDDINGS_DIR,
@@ -32,7 +32,7 @@ class RAGPipeline:
     def __init__(
         self,
         embedding_model: str = EMBEDDING_MODEL,
-        llm_model: str = LLM_MODEL_ID,
+        groq_model: str = GROQ_MODEL,
         device: str = DEVICE,
         load_llm: bool = True
     ):
@@ -41,14 +41,14 @@ class RAGPipeline:
         
         Args:
             embedding_model: Embedding model name
-            llm_model: LLM model ID
-            device: Device to use
+            groq_model: Groq model ID (llama-3.3-70b-versatile, etc.)
+            device: Device to use (for embeddings only)
             load_llm: Whether to load LLM immediately
         """
-        logger.info("Initializing RAG Pipeline")
+        logger.info("Initializing RAG Pipeline with Groq LLM")
         
         self.device = device
-        self.pdf_processor = PDFProcessor() # Initialize PDF processor
+        self.pdf_processor = PDFProcessor()
         self.embedding_manager = EmbeddingManager(
             model_name=embedding_model,
             device=device
@@ -56,11 +56,8 @@ class RAGPipeline:
         
         self.llm_handler: Optional[LLMHandler] = None
         if load_llm:
-            logger.info("Loading LLM...")
-            self.llm_handler = LLMHandler(
-                model_id=llm_model,
-                device=device
-            )
+            logger.info(f"Initializing Groq LLM handler with model: {groq_model}")
+            self.llm_handler = LLMHandler(model_id=groq_model)
         
         self.retriever: Optional[SemanticRetriever] = None
         self.chunks: List[Dict[str, Any]] = []
@@ -130,23 +127,20 @@ class RAGPipeline:
             logger.error(f"Error setting up retriever: {str(e)}")
             raise
     
-    def load_llm(self, model_id: str = LLM_MODEL_ID):
+    def load_llm(self, model_id: str = GROQ_MODEL):
         """
-        Load language model.
+        Load language model from Groq.
         
         Args:
-            model_id: Model ID to load
+            model_id: Groq model ID to use
         """
-        logger.info(f"Loading LLM: {model_id}")
+        logger.info(f"Loading Groq LLM: {model_id}")
         
         try:
-            self.llm_handler = LLMHandler(
-                model_id=model_id,
-                device=self.device
-            )
-            logger.info("LLM loaded successfully")
+            self.llm_handler = LLMHandler(model_id=model_id)
+            logger.info(f"Groq LLM loaded successfully: {model_id}")
         except Exception as e:
-            logger.error(f"Error loading LLM: {str(e)}")
+            logger.error(f"Error loading Groq LLM: {str(e)}")
             raise
     
     def retrieve(

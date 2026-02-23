@@ -1,23 +1,17 @@
 """
 LLM Handler Module
-Manages language model loading and inference.
+Manages language model inference using Groq Cloud API.
 """
 
 import logging
-from typing import List, Dict, Any, Optional
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM, TextIteratorStreamer
-from transformers.utils import is_flash_attn_2_available
-from threading import Thread
+from typing import List, Dict, Any, Optional, Generator
+from groq import Groq
 from config.settings import (
-    LLM_MODEL_ID,
-    DEVICE,
+    GROQ_MODEL,
+    GROQ_API_KEY,
     LLM_TEMPERATURE,
     LLM_MAX_NEW_TOKENS,
-    USE_8BIT_QUANTIZATION,
-    USE_4BIT_QUANTIZATION,
-    CACHE_LLM_MODEL,
-    HUGGINGFACE_TOKEN
+    GROQ_API_TIMEOUT
 )
 
 logger = logging.getLogger(__name__)
@@ -25,224 +19,146 @@ logger = logging.getLogger(__name__)
 
 class LLMHandler:
     """
-    Manages loading and inference with language models.
+    Manages inference with language models using Groq Cloud API.
+    No local model loading required - all inference is done via API.
     """
     
     def __init__(
         self,
-        model_id: str = LLM_MODEL_ID,
-        device: str = DEVICE,
-        use_8bit: bool = USE_8BIT_QUANTIZATION,
-        use_4bit: bool = USE_4BIT_QUANTIZATION,
-        use_flash_attention: bool = True
+        model_id: str = GROQ_MODEL,
+        api_key: str = GROQ_API_KEY,
+        temperature: float = LLM_TEMPERATURE,
+        max_tokens: int = LLM_MAX_NEW_TOKENS
     ):
         """
-        Initialize LLM handler.
+        Initialize Groq LLM handler.
         
         Args:
-            model_id: Hugging Face model ID
-            device: Device to load model on
-            use_8bit: Use 8-bit quantization
-            use_4bit: Use 4-bit quantization
-            use_flash_attention: Use Flash Attention 2 if available
+            model_id: Groq model ID
+            api_key: Groq API key
+            temperature: Default temperature for generation
+            max_tokens: Default max tokens for generation
+            
+        Raises:
+            ValueError: If api_key is not provided
         """
+        if not api_key:
+            raise ValueError("GROQ_API_KEY is required. Set it in .env or pass it as api_key parameter.")
+        
         self.model_id = model_id
-        self.device = device
-        self.model = None
-        self.tokenizer = None
-        self.use_flash_attention = use_flash_attention and is_flash_attn_2_available()
+        self.api_key = api_key
+        self.temperature = temperature
+        self.max_tokens = max_tokens
         
-        logger.info(f"Initializing LLMHandler with model: {model_id}")
-        logger.info(f"Device: {device}, 8-bit: {use_8bit}, 4-bit: {use_4bit}")
+        # Initialize Groq client
+        self.client = Groq(api_key=api_key)
         
-        self._load_model(use_8bit=use_8bit, use_4bit=use_4bit)
-    
-    def _load_model(self, use_8bit: bool = False, use_4bit: bool = False):
-        """
-        Load tokenizer and model with quantization if specified.
-        
-        Args:
-            use_8bit: Use 8-bit quantization
-            use_4bit: Use 4-bit quantization
-        """
-        try:
-            # Load tokenizer
-            logger.info(f"Loading tokenizer for model: {self.model_id}")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_id,
-                token=HUGGINGFACE_TOKEN if HUGGINGFACE_TOKEN else None,
-                trust_remote_code=True
-            )
-            
-            # Prepare model kwargs
-            model_kwargs = {
-                "device_map": "auto" if self.device == "cuda" else None,
-                "torch_dtype": torch.float16 if self.device == "cuda" else torch.float32,
-                "trust_remote_code": True,
-                "token": HUGGINGFACE_TOKEN if HUGGINGFACE_TOKEN else None,
-            }
-            
-            # Add quantization config if needed
-            if use_8bit or use_4bit:
-                from transformers import BitsAndBytesConfig
-                
-                if use_8bit:
-                    logger.info("Using 8-bit quantization")
-                    model_kwargs["quantization_config"] = BitsAndBytesConfig(
-                        load_in_8bit=True,
-                        cpu_int8_threshold=0.0,
-                    )
-                elif use_4bit:
-                    logger.info("Using 4-bit quantization")
-                    model_kwargs["quantization_config"] = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_compute_dtype=torch.float16,
-                        bnb_4bit_use_double_quant=True,
-                        bnb_4bit_quant_type="nf4",
-                    )
-            
-            # Add Flash Attention if available
-            if self.use_flash_attention:
-                logger.info("Using Flash Attention 2")
-                model_kwargs["attn_implementation"] = "flash_attention_2"
-            
-            # Load model
-            logger.info(f"Loading model: {self.model_id}")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_id,
-                **model_kwargs
-            )
-            
-            logger.info(f"Successfully loaded model and tokenizer")
-            
-            # Set pad token
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
-            
-        except Exception as e:
-            logger.error(f"Failed to load model: {str(e)}")
-            raise
+        logger.info(f"Initialized Groq LLM Handler with model: {model_id}")
+        logger.info(f"Default temperature: {temperature}, max_tokens: {max_tokens}")
     
     def generate(
         self,
         prompt: str,
-        temperature: float = LLM_TEMPERATURE,
-        max_new_tokens: int = LLM_MAX_NEW_TOKENS,
-        top_p: float = 0.9,
-        do_sample: bool = True,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        top_p: float = 1.0,
         **kwargs
     ) -> str:
         """
-        Generate text from prompt.
+        Generate text from prompt using Groq API.
         
         Args:
             prompt: Input prompt
-            temperature: Sampling temperature
-            max_new_tokens: Maximum new tokens to generate
+            temperature: Sampling temperature (optional, uses default if not specified)
+            max_tokens: Maximum tokens to generate (optional, uses default if not specified)
             top_p: Nucleus sampling parameter
-            do_sample: Whether to use sampling
-            **kwargs: Additional generation arguments
+            **kwargs: Additional parameters to pass to API
             
         Returns:
             Generated text
+            
+        Raises:
+            RuntimeError: If API call fails
         """
-        if self.model is None or self.tokenizer is None:
-            raise RuntimeError("Model not loaded")
-        
         try:
-            logger.info(f"Generating text (temp={temperature}, max_tokens={max_new_tokens})")
+            temp = temperature if temperature is not None else self.temperature
+            max_tok = max_tokens if max_tokens is not None else self.max_tokens
             
-            # Tokenize input
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            logger.info(f"Generating text with Groq (temp={temp}, max_tokens={max_tok})")
             
-            # Generate
-            with torch.no_grad():
-                outputs = self.model.generate(
-                    **inputs,
-                    temperature=temperature,
-                    max_new_tokens=max_new_tokens,
-                    top_p=top_p,
-                    do_sample=do_sample,
-                    pad_token_id=self.tokenizer.eos_token_id,
-                    **kwargs
-                )
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temp,
+                max_tokens=max_tok,
+                top_p=top_p,
+                **kwargs
+            )
             
-            # Decode output
-            generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            generated_text = response.choices[0].message.content
+            logger.info("Generation successful")
             
-            # Remove prompt from output
-            if prompt in generated_text:
-                generated_text = generated_text.replace(prompt, "").strip()
-            
-            logger.info(f"Generation successful")
             return generated_text
             
         except Exception as e:
             logger.error(f"Error during generation: {str(e)}")
-            raise
+            raise RuntimeError(f"Failed to generate text: {str(e)}")
     
     def generate_streaming(
         self,
         prompt: str,
-        temperature: float = LLM_TEMPERATURE,
-        max_new_tokens: int = LLM_MAX_NEW_TOKENS,
-        top_p: float = 0.9,
-        do_sample: bool = True,
-    ):
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        top_p: float = 1.0,
+        **kwargs
+    ) -> Generator[str, None, None]:
         """
-        Generate text with streaming output (yields tokens).
+        Generate text with streaming output using Groq API.
+        Yields tokens as they're generated.
         
         Args:
             prompt: Input prompt
-            temperature: Sampling temperature
-            max_new_tokens: Maximum new tokens
+            temperature: Sampling temperature (optional, uses default if not specified)
+            max_tokens: Maximum tokens to generate (optional, uses default if not specified)
             top_p: Nucleus sampling parameter
-            do_sample: Whether to use sampling
+            **kwargs: Additional parameters to pass to API
             
         Yields:
-            Generated tokens
-        """
-        if self.model is None or self.tokenizer is None:
-            raise RuntimeError("Model not loaded")
-        
-        try:
-            logger.info("Starting streaming generation")
+            Generated text chunks
             
-            # Create streamer
-            streamer = TextIteratorStreamer(
-                self.tokenizer,
-                skip_prompt=True,
-                skip_special_tokens=True
+        Raises:
+            RuntimeError: If API call fails
+        """
+        try:
+            temp = temperature if temperature is not None else self.temperature
+            max_tok = max_tokens if max_tokens is not None else self.max_tokens
+            
+            logger.info(f"Starting streaming generation with Groq (temp={temp}, max_tokens={max_tok})")
+            
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=temp,
+                max_tokens=max_tok,
+                top_p=top_p,
+                stream=True,  # Enable streaming
+                **kwargs
             )
             
-            # Tokenize input
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
+            # Yield chunks as they arrive
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    yield chunk.choices[0].delta.content
             
-            # Generation kwargs
-            generation_kwargs = {
-                **inputs,
-                "streamer": streamer,
-                "temperature": temperature,
-                "max_new_tokens": max_new_tokens,
-                "top_p": top_p,
-                "do_sample": do_sample,
-                "pad_token_id": self.tokenizer.eos_token_id,
-            }
-            
-            # Run generation in thread
-            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
-            thread.start()
-            
-            # Yield tokens as they're generated
-            for token in streamer:
-                yield token
-            
-            thread.join()
             logger.info("Streaming generation complete")
             
         except Exception as e:
             logger.error(f"Error during streaming generation: {str(e)}")
-            raise
+            raise RuntimeError(f"Failed to generate text stream: {str(e)}")
     
     def format_prompt_with_context(
         self,
@@ -250,14 +166,14 @@ class LLMHandler:
         context_items: List[Dict[str, Any]]
     ) -> str:
         """
-        Format prompt with retrieved context.
+        Format prompt with retrieved context for Groq API.
         
         Args:
             query: User query
             context_items: Retrieved context chunks
             
         Returns:
-            Formatted prompt
+            Formatted prompt for LLM
         """
         # Create context string
         context = "- " + "\n- ".join([
@@ -265,7 +181,7 @@ class LLMHandler:
             for item in context_items
         ])
         
-        # Base prompt with examples
+        # Base prompt with RAG context
         base_prompt = """Based on the following context items, please answer the query.
 Give yourself room to think by extracting relevant passages from the context before answering the query.
 Don't return the thinking, only return the answer.
@@ -279,37 +195,22 @@ User Query: {query}
 Answer:"""
         
         formatted_prompt = base_prompt.format(context=context, query=query)
+        logger.debug(f"Formatted prompt (length: {len(formatted_prompt)} chars)")
         
-        # Apply chat template if available
-        try:
-            dialogue_template = [
-                {"role": "user", "content": formatted_prompt}
-            ]
-            prompt = self.tokenizer.apply_chat_template(
-                conversation=dialogue_template,
-                tokenize=False,
-                add_generation_prompt=True
-            )
-            return prompt
-        except Exception as e:
-            logger.warning(f"Could not apply chat template: {str(e)}, using plain prompt")
-            return formatted_prompt
+        return formatted_prompt
     
     def get_model_info(self) -> Dict[str, Any]:
         """
-        Get information about the loaded model.
+        Get information about the Groq model.
         
         Returns:
-            Model information
+            Model information dictionary
         """
-        if self.model is None:
-            return {}
-        
         return {
             "model_id": self.model_id,
-            "device": self.device,
-            "parameters": sum(p.numel() for p in self.model.parameters()),
-            "trainable_parameters": sum(p.numel() for p in self.model.parameters() if p.requires_grad),
-            "vocab_size": self.tokenizer.vocab_size if self.tokenizer else None,
-            "max_position_embeddings": getattr(self.model.config, "max_position_embeddings", None),
+            "provider": "Groq Cloud API",
+            "type": "Hosted LLM (No local download required)",
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "inference_type": "API-based"
         }

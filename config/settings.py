@@ -26,10 +26,11 @@ for directory in [DATA_DIR, EMBEDDINGS_DIR, DOCUMENTS_DIR, LOGS_DIR, CACHE_DIR]:
 
 # API Configuration
 HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN", "")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
 # Model Configuration
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-mpnet-base-v2")
-LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "meta-llama/Meta-Llama-3.1-8B-Instruct")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 DEVICE = os.getenv("DEVICE", "cuda")
 
 # LLM Parameters
@@ -54,14 +55,11 @@ LOG_FORMAT = os.getenv("LOG_FORMAT", "json")
 DEBUG: bool = os.getenv("DEBUG", "false").lower() == "true"
 ENVIRONMENT = os.getenv("ENVIRONMENT", "production")
 
-# Quantization Configuration (for memory optimization)
-USE_8BIT_QUANTIZATION: bool = True
-USE_4BIT_QUANTIZATION: bool = False  # Use 8-bit instead for better compatibility
-QUANTIZATION_COMPUTE_DTYPE = "float16"
+# Groq Configuration (No quantization needed - using API)
+GROQ_API_TIMEOUT: int = 60  # Timeout for Groq API calls
 
 # Model Cache
 CACHE_EMBEDDING_MODEL: bool = True
-CACHE_LLM_MODEL: bool = True
 
 # File size limits
 MAX_PDF_SIZE_MB: int = 50
@@ -101,7 +99,7 @@ class Config:
     @staticmethod
     def validate_config() -> bool:
         """Validate critical configuration"""
-        required_vars = ["EMBEDDING_MODEL", "LLM_MODEL_ID"]
+        required_vars = ["EMBEDDING_MODEL", "GROQ_MODEL"]
         for var in required_vars:
             if not globals().get(var):
                 logging.warning(f"Missing configuration: {var}")

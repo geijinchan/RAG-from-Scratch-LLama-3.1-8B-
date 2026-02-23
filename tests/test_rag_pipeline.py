@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 from src.rag_pipeline import RAGPipeline
-from config.settings import EMBEDDING_MODEL, LLM_MODEL_ID, DEVICE
+from config.settings import EMBEDDING_MODEL, GROQ_MODEL, DEVICE
 
 
 class TestRAGPipelineInitialization:
