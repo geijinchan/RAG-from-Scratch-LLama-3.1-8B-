@@ -36,7 +36,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system using Groq's host
 # Copy your API key
 
 # Clone and setup
-git clone <repo-url>
+git clone https://github.com/geijinchan/RAG-from-Scratch-LLama-3.1-8B-.git
 cd "RAG From Scratch/git"
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
