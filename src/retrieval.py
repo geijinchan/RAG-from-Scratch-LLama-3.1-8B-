@@ -85,7 +85,12 @@ class SemanticRetriever:
             raise ValueError("No embeddings found in chunks")
         
         embeddings = torch.stack(embeddings_list)
-        logger.info(f"Prepared embeddings tensor with shape: {embeddings.shape}")
+        
+        # Move embeddings to the same device as the embedding model
+        device = self.embedding_manager.device
+        embeddings = embeddings.to(device)
+        
+        logger.info(f"Prepared embeddings tensor with shape: {embeddings.shape} on device: {device}")
         return embeddings
     
     def retrieve(

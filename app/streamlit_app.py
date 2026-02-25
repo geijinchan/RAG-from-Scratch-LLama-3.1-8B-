@@ -66,6 +66,7 @@ if "pipeline" not in st.session_state:
     st.session_state.pdf_loaded = False
     st.session_state.chat_history = []
     st.session_state.document_info = None
+    st.session_state.processed_filename = None  # Track which file was processed
 
 def initialize_pipeline():
     """Initialize the RAG pipeline"""
@@ -106,7 +107,8 @@ def main():
         
         uploaded_file = st.file_uploader("Upload PDF Document", type="pdf")
         
-        if uploaded_file is not None:
+        # Only process if it's a NEW file (not already processed)
+        if uploaded_file is not None and uploaded_file.name != st.session_state.processed_filename:
             file_path = Path(DOCUMENTS_DIR) / uploaded_file.name
             
             with st.spinner(f"Processing {uploaded_file.name}..."):
@@ -130,6 +132,7 @@ def main():
                         
                         if result.get("status") == "success":
                             st.session_state.pdf_loaded = True
+                            st.session_state.processed_filename = uploaded_file.name  # Mark as processed
                             st.session_state.document_info = {
                                 "filename": uploaded_file.name,
                                 "chunks": result.get("chunks_processed"),

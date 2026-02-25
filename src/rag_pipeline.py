@@ -202,7 +202,7 @@ class RAGPipeline:
             answer = self.llm_handler.generate(
                 prompt=prompt,
                 temperature=temperature,
-                max_new_tokens=max_new_tokens
+                max_tokens=max_new_tokens
             )
             
             logger.info("Answer generated successfully")
@@ -243,7 +243,7 @@ class RAGPipeline:
             for token in self.llm_handler.generate_streaming(
                 prompt=prompt,
                 temperature=temperature,
-                max_new_tokens=max_new_tokens
+                max_tokens=max_new_tokens
             ):
                 yield token
             
