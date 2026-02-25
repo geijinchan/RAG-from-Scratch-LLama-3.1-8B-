@@ -1,48 +1,133 @@
 version: '3.8'
 
+# Docker Compose for RAG Application with GPU/CPU Toggle
+# 
+# Usage:
+#   GPU Mode (Default):  docker-compose up --build
+#   CPU Mode:            USE_GPU=false docker-compose up --build
+#
+# Build only:
+#   GPU:  docker-compose build --build-arg USE_GPU=true
+#   CPU:  docker-compose build --build-arg USE_GPU=false
+
 services:
   rag-app:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: rag-assistant
-    ports:
-      - "8501:8501"
+      args:
+        - USE_GPU=${USE_GPU:-true}
+        - CUDA_VERSION=12.2.2
+    
+    container_name: rag-assistant-${ENVIRONMENT:-production}
+    
+    image: rag-app:${USE_GPU:-true}-latest
+    
+    # ========================================================================
+    # GPU RUNTIME CONFIGURATION
+    # ========================================================================
+    runtime: ${DOCKER_RUNTIME:-nvidia}  # nvidia (GPU) or runc (CPU)
+    
+    # GPU Device Mapping (only used if USE_GPU=true)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${GPU_DEVICE_ID:-0}']
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
+    
     environment:
+      # Python Configuration
       - PYTHONUNBUFFERED=1
-      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-mpnet-base-v2}
-      - LLM_MODEL_ID=${LLM_MODEL_ID:-meta-llama/Meta-Llama-3.1-8B-Instruct}
+      - PYTHONDONTWRITEBYTECODE=1
+      
+      # GPU/Device Configuration
+      - USE_GPU=${USE_GPU:-true}
       - DEVICE=${DEVICE:-cuda}
+      - GPU_DEVICE_ID=${GPU_DEVICE_ID:-0}
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - PYTORCH_CUDA_ALLOC_CONF=${PYTORCH_CUDA_ALLOC_CONF:-max_split_size_mb:512}
+      
+      # API Configuration
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}
+      
+      # Model Configuration
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-all-mpnet-base-v2}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      
+      # LLM Parameters
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.7}
       - LLM_MAX_NEW_TOKENS=${LLM_MAX_NEW_TOKENS:-512}
       - RETRIEVAL_TOP_K=${RETRIEVAL_TOP_K:-5}
+      
+      # Application Configuration
       - ENVIRONMENT=${ENVIRONMENT:-production}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - STREAMLIT_PORT=8501
+      - STREAMLIT_SERVER_HEADLESS=true
+    
+    # ========================================================================
+    # PORT MAPPING
+    # ========================================================================
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"  # Streamlit UI
+    
+    # ========================================================================
+    # VOLUME MOUNTS
+    # ========================================================================
     volumes:
-      - ./data:/app/data
+      - ./data/documents:/app/data/documents
+      - ./data/embeddings:/app/data/embeddings
+      - ./data/cache:/app/data/cache
       - ./logs:/app/logs
       - ./config:/app/config
-    stdin_open: true
-    tty: true
-    # GPU support (uncomment if using NVIDIA GPU)
-    # runtime: nvidia
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    restart: unless-stopped
+    
+    # ========================================================================
+    # HEALTH CHECK
+    # ========================================================================
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    
+    # ========================================================================
+    # LOGGING
+    # ========================================================================
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=rag-app"
+    
+    # ========================================================================
+    # RESTART POLICY
+    # ========================================================================
+    restart: unless-stopped
+    
+    # One terminal for interactive mode
+    stdin_open: true
+    tty: true
 
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  default:
+    name: rag-network
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
 volumes:
   data:
+    driver: local
   logs:
+    driver: local
