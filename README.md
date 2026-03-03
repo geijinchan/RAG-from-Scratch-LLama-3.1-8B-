@@ -1,4 +1,18 @@
+
 # RAG From Scratch - Groq Cloud API Edition
+## 📁 Project Structure
+
+```
+├── app/                # Streamlit UI and pages
+├── src/                # Core RAG pipeline and utilities
+├── data/               # Documents, embeddings, and cache
+├── config/             # Configuration files (settings.py, etc.)
+├── logs/               # Log files
+├── requirements.txt    # Python dependencies
+├── docker/             # Dockerfile and related scripts
+├── README.md           # Project documentation
+```
+
 
 A production-ready Retrieval-Augmented Generation (RAG) system using Groq's hosted LLMs for ultra-fast inference.
 
@@ -45,13 +59,15 @@ pip install -r requirements.txt
 
 ### 2. Configure (1 minute)
 
-Create `.env`:
+Create a `.env` file in the project root with the following variables:
 
 ```bash
-GROQ_API_KEY=gsk_your_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-EMBEDDING_MODEL=all-mpnet-base-v2
+GROQ_API_KEY=gsk_your_api_key_here      # (Required) From console.groq.com
+GROQ_MODEL=llama-3.3-70b-versatile      # (Optional, default: llama-3.3-70b-versatile)
+EMBEDDING_MODEL=all-mpnet-base-v2       # (Optional, default: all-mpnet-base-v2)
 ```
+
+> **Note:** The `config/` folder contains additional settings (see `config/settings.py`).
 
 ### 3. Test (30 seconds)
 
@@ -140,11 +156,16 @@ EMBEDDING_MODEL=all-mpnet-base-v2   # Or all-MiniLM-L6-v2 for smaller
 python test_groq_rag.py
 ```
 
+
 ### Full Test Suite
+
+If you have additional tests, run them with:
 
 ```bash
 pytest tests/ -v
 ```
+
+> **Note:** If the `tests/` folder is not present, skip this step.
 
 ---
 
@@ -156,12 +177,15 @@ pytest tests/ -v
 streamlit run app/streamlit_app.py
 ```
 
+
 ### Docker
 
 ```bash
 docker build -t rag-groq .
 docker run --env-file .env -p 8501:8501 rag-groq
 ```
+
+> The `docker/` folder contains the main Dockerfile and related scripts. For GPU builds, see the Dockerfile comments.
 
 ---
 
@@ -188,7 +212,33 @@ docker run --env-file .env -p 8501:8501 rag-groq
 
 ## 📄 License
 
-See [LICENSE.txt](LICENSE.txt)
+
+This project is licensed under the MIT License – see [LICENSE.txt](LICENSE.txt) for details.
+---
+
+## 🛠️ Configuration Folder
+
+The `config/` directory contains configuration files such as `settings.py` for advanced customization. Review and adjust as needed for your deployment.
+
+---
+## 🤝 Contributing
+
+Contributions are welcome! Please open an issue or pull request for suggestions, bug fixes, or improvements.
+
+---
+
+## ⚠️ Known Issues / Limitations
+
+- Only PDF files are supported for ingestion.
+- Requires a valid Groq API key for operation.
+- Designed for Groq API; not tested with other LLM providers.
+
+---
+## 🙏 Credits
+
+Inspired by and adapted from the original [RAG-from-Scratch-LLama-3.1-8B-](https://github.com/geijinchan/RAG-from-Scratch-LLama-3.1-8B-) project. Thanks to the open-source community for foundational work.
+
+---
 
 ---
 
